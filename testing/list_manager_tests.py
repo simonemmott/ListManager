@@ -1,5 +1,5 @@
 from unittest import TestCase
-from json_model import ListManager
+from json_model import ListManager, DoesNotExist
 
 class ListManagerTests(TestCase):
 
@@ -23,4 +23,13 @@ class ListManagerTests(TestCase):
         self.assertEqual('a', lm.all()[0])
         self.assertEqual('b', lm.all()[1])
         self.assertEqual('c', lm.all()[2])
+        
+    def test_get_item(self):
+        data = ['a', 'b', 'c']
+        lm = ListManager(data)
+        self.assertEqual('a', lm.get('a'))
+        self.assertEqual('b', lm.get('b'))
+        self.assertEqual('c', lm.get('c'))
+        with self.assertRaises(DoesNotExist):
+            lm.get('z')
         
