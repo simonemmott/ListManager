@@ -1,3 +1,3 @@
-# k2 Utilities
+# List Manager
 
-The K2 utilities
+List Manager
