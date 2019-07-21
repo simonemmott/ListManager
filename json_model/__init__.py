@@ -84,7 +84,7 @@ def parse_criteria(criteria):
         
 
 class Expression(object):
-    def __init__(self, path):
+    def __init__(self, path, **kw):
         if path == None or path == '':
             raise ValueError('You must supply a value for path')
         names = path.split('.')
@@ -105,7 +105,7 @@ class Expression(object):
                     self.criteria = parse_criteria(criteria)
         self.next = None
         if len(names) > 1:
-            self.next = Expression('.'.join(names[1:]))
+            self.next = self.__class__('.'.join(names[1:]), **kw)
             
     def evaluate(self, obj):
         if not hasattr(obj, self.name):
@@ -129,6 +129,9 @@ class Expression(object):
                     value = None
                 else:
                     value = value.all()[self.index]
+            else:
+                if len(value) == 0:
+                    value = None
         elif self.criteria:
             if not matches(value, **self.criteria):
                 value = None
@@ -160,19 +163,20 @@ class EmbeddedIterator(object):
         
     def __iter__(self):
         self.__index = 0
+        if self.__criteria:
+            if self.__filtered == None:
+                self._apply_filter()
         return self
     
     def __next__(self):
+        data = self.__filtered if self.__filtered != None else self.__data
         if self.__index >= self.__len__():
             raise StopIteration
         if self.is_dict():
-            item = list(self.__data)[self.__index]
+            item = list(data)[self.__index]
         else:            
-            item = self.__data[self.__index]
+            item = data[self.__index]
         self.__index = self.__index + 1
-        if self.__criteria:
-            if not matches(item, **self.__criteria):
-                item = self.__next__()
         return item
     
     def _apply_filter(self):
@@ -281,10 +285,7 @@ def matches(item, **kw):
             if value != getattr(item, key):
                 return False
         else:
-            raise AttributeError('The object of type: {type} has no attribute {attr}'.format(
-                    type = type(item),
-                    attr = key
-                ))
+            return False
     return True
 
 class EmbeddedManager(object):
@@ -392,6 +393,221 @@ class EmbeddedManager(object):
     def clear(self):
         self.__data = []
         self.__length = 0
+        
+
+class FinderExpression(Expression):
+    def __init__(self, path, **kw):
+        super(FinderExpression, self).__init__(path, **kw)
+        if '*' in self.name and (self.name not in ['*', '**']):
+            raise ValueError('Invalid syntax in path: {path} at "{name}"'.format(
+                    path=path,
+                    name=self.name
+                ))
+        if self.name == '**' and self.next == None:
+            raise ValueError('Invalid syntax in path: {path} at "{name}"'.format(
+                    path=path,
+                    name=self.name
+                ))
+        if self.name == '**' and self.next.name[0] == '*':
+            raise ValueError('Invalid syntax in path: {path} at "{name}"'.format(
+                    path=path,
+                    name=self.name
+                ))
+        
+    def _evaluate_obj(self, obj, name):
+        resp = []
+        if not hasattr(obj, name):
+            return []
+        value = getattr(obj, name)
+        if isinstance(value, list) or isinstance(value, dict):
+            value = EmbeddedManager(value)
+        if isinstance(value, EmbeddedManager):
+            logger.debug('Value is an EmbeddedManager')
+            if self.criteria:
+                logger.debug('EmbeddedManager with criteria: {crit}'.format(crit=self.criteria))
+                try:
+                    if value.is_list():
+                        values = value.filter(**self.criteria).copy()
+                    elif value.is_dict():
+                        values = [item for item in value.filter(**self.criteria).values()]
+                    else:
+                        values = []
+                except DoesNotExist:
+                    values = []
+            elif self.index != None:
+                logger.debug('EmbeddedManager with index: {idx}'.format(idx=self.index))
+                length = len(value)
+                if value.is_list():
+                    if self.index >= length or self.index < -length:
+                        values = []
+                    else:
+                        values = [value.all()[self.index]]
+                elif value.is_dict():
+                    if length == 0:
+                        values = []
+                    else:
+                        try:
+                            values = [value.all()[self.index]]
+                        except KeyError:
+                            values = []
+                else:
+                    values = []
+            else:
+                logger.debug('EmbeddedManager without index or criteria')
+                if len(value) == 0:
+                    values = []
+                else:
+                    if value.is_list():
+                        values = value.all().copy()
+                    elif value.is_dict():
+                        values = [item for item in value.all().values()]
+                    else:
+                        values = []
+
+        elif self.criteria:
+            if matches(value, **self.criteria):
+                values = [value]
+            else:
+                values = []
+        else:
+            values = [value]
+        if not values:
+            return resp
+        if not self.next:
+            resp.extend(values)
+            return resp
+        resp.extend(self.next.evaluate(values))
+        return resp
+    
+    def _evaluate_open_search(self, obj, name):
+        logger.debug('Evaluating open search for name: {name}'.format(name=name))
+        next_name = self.next.name
+        resp = []
+        if not hasattr(obj, name):
+            return resp
+        value = getattr(obj, name)
+        if isinstance(value, list) or isinstance(value, dict):
+            value = EmbeddedManager(value)
+        if isinstance(value, EmbeddedManager):
+            logger.debug('Evaluating open search {name} is a collection'.format(name=name))
+            if value.is_dict():
+                logger.debug('Collection is dict')
+                if self.criteria:
+                    logger.debug('Filtering dict with criteria: {crit}'.format(crit=self.criteria))
+                    values = [item for item in value.filter(**self.criteria).values()]
+                elif self.index:
+                    logger.debug('Filtering dict with index {idx}'.format(idx=self.index))
+                    if self.index in value:
+                        values = [value.get(self.index)]
+                    else:
+                        values = []
+                else:
+                    logger.debug('No dict filtering')
+                    values = [item for item in value.all().values()]
+                
+            elif value.is_list():
+                logger.debug('Collection is list')
+                if self.criteria:
+                    logger.debug('Filtering list with criteria: {crit}'.format(crit=self.criteria))
+                    logger.debug('Unfiltered values: {v}'.format(v=str([item for item in value.all()])))
+                    logger.debug('Length filtered list: {len}'.format(len=len(value.filter(**self.criteria))))
+                    values = [item for item in value.filter(**self.criteria)]
+                    logger.debug('Filtered values: {v}'.format(v=values))
+                elif self.index:
+                    logger.debug('Filtering list with index: {idx}'.format(idx=self.index))
+                    length = len(value)
+                    if self.index >= length or self.index < -length:
+                        values = []
+                    else:
+                        values = [value.all()[self.index]]
+                else:
+                    logger.debug('No list filtering')
+                    values = value.all()
+            else:
+                logger.debug('Collection is UNKNOWN')
+                values = []
+            logger.debug('Values: {values}'.format(values=str(values)))
+            for item in values:
+                logger.debug('Evaluating item: {item} in collection'.format(item=str(item)))
+                for sub_name in dir(item):
+                    if sub_name[0] == '_':
+                        continue
+                    sub_attr = getattr(item, sub_name)
+                    if callable(sub_attr):
+                        continue
+                    logger.debug('Evaluating item sub name: {sub} of value: {value}'.format(sub=sub_name, value=str(item)))
+                    if sub_name == next_name:
+                        resp.extend(self.next.evaluate(item))
+                    else:
+                        resp.extend(self._evaluate_open_search(item, sub_name))
+        else:
+            if (isinstance(value, str) or
+                isinstance(value, int) or
+                isinstance(value, float) or
+                isinstance(value, bool)):
+                logger.debug('Evaluating open search {name} is builtin'.format(name=name))
+            else:
+                logger.debug('Evaluating open search {name} is NOT a collection'.format(name=name))
+                if self.criteria:
+                    if not matches(value, **self.criteria):
+                        return []
+                for sub_name in dir(value):
+                    if sub_name[0] == '_':
+                        continue
+                    sub_attr = getattr(value, sub_name)
+                    if callable(sub_attr):
+                        continue
+                    logger.debug('Evaluating sub name: {sub} of value: {value}'.format(sub=sub_name, value=str(value)))
+                    if sub_name == next_name:
+                        resp.extend(self.next.evaluate(value))
+                    else:
+                        resp.extend(self._evaluate_open_search(value, sub_name))
+        return resp
+        
+    def evaluate(self, source):
+        if isinstance(source, list):
+            data = source
+        else:
+            data = [source]
+        resp = []
+        for obj in data:
+            if self.name == '*':
+                logger.debug('Evaluating wildcard')
+                for name in dir(obj):
+                    if name[0] == '_':
+                        continue
+                    attr = getattr(obj, name)
+                    if callable(attr):
+                        continue
+                    logger.debug('Evaluating wildcard as {name}'.format(name=name))
+                    resp.extend(self._evaluate_obj(obj, name))
+            elif self.name == '**':
+                logger.debug('Evaluating open search')
+                for name in dir(obj):
+                    if name[0] == '_':
+                        continue
+                    attr = getattr(obj, name)
+                    if callable(attr):
+                        continue
+                    logger.debug('Evaluating open search as {name}'.format(name=name))
+                    resp.extend(self._evaluate_open_search(obj, name))
+                
+                
+            else:
+                resp.extend(self._evaluate_obj(obj, self.name))
+        return resp
+        
+class Finder(object):
+    
+    def __find__(self, path):
+        if path == None or len(path) == 0:
+            return []
+        fe = FinderExpression(path)
+        resp = fe.evaluate(self)
+        logger.debug('Found: {resp}'.format(resp=str(resp)))
+        return resp
+        
+
             
             
             

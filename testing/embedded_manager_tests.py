@@ -1,5 +1,8 @@
 from unittest import TestCase
 from json_model import EmbeddedManager, DoesNotExist, F, Expression, parse_criteria
+from json_model import Finder
+import logging
+logger = logging.getLogger(__name__)
 
 class Dummy(object):
     def __init__(self, **kw):
@@ -22,6 +25,37 @@ class Dummy(object):
                 if lhs != rhs:
                     return False
         return True
+    
+    def __str__(self):
+        fields = ''
+        for name in dir(self):
+            if name[0] == '_':
+                continue
+            attr = getattr(self, name)
+            if callable(attr):
+                continue
+            if len(fields) == 0:
+                fields = '{name}={value}'.format(name=name, value=str(attr))
+            else:
+                fields = '{fields}, {name}={value}'.format(fields=fields, name=name, value=str(attr))
+        return '<{fields}>'.format(fields=fields)
+    
+    def __repr__(self):
+        fields = ''
+        for name in dir(self):
+            if name[0] == '_':
+                continue
+            attr = getattr(self, name)
+            if callable(attr):
+                continue
+            if len(fields) == 0:
+                fields = '{name}={value}'.format(name=name, value=str(attr))
+            else:
+                fields = '{fields}, {name}={value}'.format(fields=fields, name=name, value=str(attr))
+        return '<{cls}: {fields}>'.format(cls=self.__class__.__name__, fields=fields)
+    
+class FDummy(Dummy, Finder):
+    pass
             
             
 class ExpressionTests(TestCase):
@@ -177,7 +211,6 @@ class ExpressionTests(TestCase):
         self.assertEqual(3, e_objects_idx_0.evaluate(obj).id)
         
 
-
 class EmbeddedManagerTests(TestCase):
 
     def test_new_instance(self):
@@ -237,7 +270,7 @@ class EmbeddedManagerTests(TestCase):
         self.assertEqual('NAME_3', lm.get(id=3).name)
         with self.assertRaises(DoesNotExist):
             lm.get(id=4)
-        with self.assertRaises(AttributeError):
+        with self.assertRaises(DoesNotExist):
             lm.get(xxx=1)
         self.assertTrue(isinstance(lm.get(name='NAME_1'), Dummy))
         self.assertEqual(1, lm.get(name='NAME_1').id)
@@ -261,7 +294,7 @@ class EmbeddedManagerTests(TestCase):
         self.assertEqual('NAME_3', lm.get(id=3).name)
         with self.assertRaises(DoesNotExist):
             lm.get(id=4)
-        with self.assertRaises(AttributeError):
+        with self.assertRaises(DoesNotExist):
             lm.get(xxx=1)
         self.assertTrue(isinstance(lm.get(name='NAME_1'), Dummy))
         self.assertEqual(1, lm.get(name='NAME_1').id)
@@ -777,7 +810,178 @@ class EmbeddedManagerTests(TestCase):
         self.assertEqual(0, len(lm))
         
         
+class FinderTests(TestCase):
+    
+    def test_mixin_adds_find_method(self):
+        test = FDummy(id=1, name='NAME')
+        self.assertTrue(hasattr(test, '__find__'))
+        self.assertTrue(callable(test.__find__))
         
+    def test_find_embedded_list_names(self):
+        test = FDummy(
+            id=1, 
+            name='NAME_1',
+            embedded = EmbeddedManager([
+                    FDummy(id=2, name='NAME_2'),
+                    FDummy(id=3, name='NAME_3'),
+                    FDummy(id=4, name='NAME_4'),
+                ]))
+        result = test.__find__('embedded.name')
+        self.assertEqual(3, len(result))
+        self.assertTrue('NAME_2' in result)
+        self.assertTrue('NAME_3' in result)
+        self.assertTrue('NAME_4' in result)
+        
+    def test_find_embedded_dict_names(self):
+        test = FDummy(
+            id=1, 
+            name='NAME_1',
+            embedded = EmbeddedManager({
+                    'key1': FDummy(id=2, name='NAME_2'),
+                    'key2': FDummy(id=3, name='NAME_3'),
+                    'key3': FDummy(id=4, name='NAME_4'),
+                }))
+        result = test.__find__('embedded.name')
+        self.assertEqual(3, len(result))
+        self.assertTrue('NAME_2' in result)
+        self.assertTrue('NAME_3' in result)
+        self.assertTrue('NAME_4' in result)
+        
+    def test_find_filtered_embedded_list_names(self):
+        test = FDummy(
+            id=1, 
+            name='NAME_1',
+            embedded = EmbeddedManager([
+                    FDummy(id=2, name='NAME_2'),
+                    FDummy(id=3, name='NAME_3'),
+                    FDummy(id=4, name='NAME_4'),
+                ]))
+        result = test.__find__('embedded[id=3].name')
+        self.assertEqual(1, len(result))
+        self.assertTrue('NAME_3' in result)
+        result = test.__find__('embedded[id=5].name')
+        self.assertEqual(0, len(result))
+        result = test.__find__('embedded[2].name')
+        self.assertEqual(1, len(result))
+        self.assertTrue('NAME_4' in result)
+        result = test.__find__('embedded[3].name')
+        self.assertEqual(0, len(result))
+        
+    def test_find_filtered_embedded_dict_names(self):
+        test = FDummy(
+            id=1, 
+            name='NAME_1',
+            embedded = EmbeddedManager({
+                    'key1': FDummy(id=2, name='NAME_2'),
+                    'key2': FDummy(id=3, name='NAME_3'),
+                    'key3': FDummy(id=4, name='NAME_4'),
+                }))
+        result = test.__find__('embedded[id=3].name')
+        self.assertEqual(1, len(result))
+        self.assertTrue('NAME_3' in result)
+        result = test.__find__('embedded[id=5].name')
+        self.assertEqual(0, len(result))
+        result = test.__find__('embedded[key3].name')
+        self.assertEqual(1, len(result))
+        self.assertTrue('NAME_4' in result)
+        result = test.__find__('embedded[key4].name')
+        self.assertEqual(0, len(result))
+        
+    def test_find_filtered_embedded_link_name(self):
+        test = FDummy(
+            id=1, 
+            name='NAME_1',
+            link=FDummy(id=5, name='NAME_5'),
+            embedded = EmbeddedManager([
+                    FDummy(id=2, name='NAME_2'),
+                    FDummy(id=3, name='NAME_3'),
+                    FDummy(id=4, name='NAME_4'),
+                ]))
+        result = test.__find__('link.name')
+        self.assertEqual(1, len(result))
+        self.assertTrue('NAME_5' in result)
+        result = test.__find__('link[id=5].name')
+        self.assertEqual(1, len(result))
+        self.assertTrue('NAME_5' in result)
+        result = test.__find__('link[id=6].name')
+        self.assertEqual(0, len(result))
+        
+    def test_find_filtered_embedded_wildcard_name(self):
+        test = FDummy(
+            id=1, 
+            name='NAME_1',
+            link=FDummy(id=5, name='NAME_5'),
+            embedded = EmbeddedManager([
+                    FDummy(id=2, name='NAME_2'),
+                    FDummy(id=3, name='NAME_3'),
+                    FDummy(id=4, name='NAME_4'),
+                ]))
+        result = test.__find__('*.name')
+        self.assertEqual(4, len(result))
+        self.assertTrue('NAME_5' in result)
+        result = test.__find__('*[id=5].name')
+        self.assertEqual(1, len(result))
+        self.assertTrue('NAME_5' in result)
+        result = test.__find__('*[id=6].name')
+        self.assertEqual(0, len(result))
+        
+    def test_find_filtered_embedded_open_search_name(self):
+        test = FDummy(
+            id=1, 
+            name='NAME_1',
+            link=FDummy(id=5, name='NAME_5'),
+            embedded = EmbeddedManager([
+                    FDummy(
+                        id=2, 
+                        name='NAME_2',
+                        sub=EmbeddedManager([
+                            FDummy(id=1, name='NAME_1_1'),
+                            FDummy(id=2, name='NAME_1_2'),
+                            FDummy(id=3, name='NAME_1_3')
+                        ])
+                    ),
+                    FDummy(
+                        id=3, 
+                        name='NAME_3',
+                        sub=EmbeddedManager([
+                            FDummy(id=1, name='NAME_2_1'),
+                            FDummy(id=2, name='NAME_2_2'),
+                            FDummy(id=3, name='NAME_2_3')
+                        ])
+                    ),
+                    FDummy(
+                        id=4, 
+                        name='NAME_4',
+                        sub=EmbeddedManager([
+                            FDummy(id=1, name='NAME_3_1'),
+                            FDummy(id=2, name='NAME_3_2'),
+                            FDummy(id=3, name='NAME_3_3')
+                        ])
+                    )
+                ]))
+        with self.assertRaises(ValueError):
+            result = test.__find__('**')
+        result = test.__find__('**.name')
+        self.assertEqual(13, len(result))
+        self.assertTrue('NAME_5' in result)
+        self.assertTrue('NAME_2' in result)
+        self.assertTrue('NAME_1_1' in result)
+        self.assertTrue('NAME_1_2' in result)
+        self.assertTrue('NAME_1_3' in result)
+        self.assertTrue('NAME_3' in result)
+        self.assertTrue('NAME_2_1' in result)
+        self.assertTrue('NAME_2_2' in result)
+        self.assertTrue('NAME_2_3' in result)
+        self.assertTrue('NAME_4' in result)
+        self.assertTrue('NAME_3_1' in result)
+        self.assertTrue('NAME_3_2' in result)
+        self.assertTrue('NAME_3_3' in result)
+        result = test.__find__('**[id=3].name')
+        self.assertEqual(2, len(result))
+        self.assertTrue('NAME_3' in result)
+        self.assertTrue('NAME_2_3' in result)
+        result = test.__find__('**[id=6].name')
+        self.assertEqual(0, len(result))
         
         
         

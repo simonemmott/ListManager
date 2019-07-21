@@ -1,2 +1,3 @@
 from .embedded_manager_tests import EmbeddedManagerTests
 from .embedded_manager_tests import ExpressionTests
+from .embedded_manager_tests import FinderTests
