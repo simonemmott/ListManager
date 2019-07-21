@@ -935,32 +935,34 @@ class FinderTests(TestCase):
                         id=2, 
                         name='NAME_2',
                         sub=EmbeddedManager([
-                            FDummy(id=1, name='NAME_1_1'),
-                            FDummy(id=2, name='NAME_1_2'),
-                            FDummy(id=3, name='NAME_1_3')
+                            FDummy(id=1, name='NAME_1_1', check='A'),
+                            FDummy(id=2, name='NAME_1_2', check='B'),
+                            FDummy(id=3, name='NAME_1_3', check='C')
                         ])
                     ),
                     FDummy(
                         id=3, 
                         name='NAME_3',
                         sub=EmbeddedManager([
-                            FDummy(id=1, name='NAME_2_1'),
-                            FDummy(id=2, name='NAME_2_2'),
-                            FDummy(id=3, name='NAME_2_3')
+                            FDummy(id=1, name='NAME_2_1', check='D'),
+                            FDummy(id=2, name='NAME_2_2', check='E'),
+                            FDummy(id=3, name='NAME_2_3', check='F')
                         ])
                     ),
                     FDummy(
                         id=4, 
                         name='NAME_4',
                         sub=EmbeddedManager([
-                            FDummy(id=1, name='NAME_3_1'),
-                            FDummy(id=2, name='NAME_3_2'),
-                            FDummy(id=3, name='NAME_3_3')
+                            FDummy(id=1, name='NAME_3_1', check='G'),
+                            FDummy(id=2, name='NAME_3_2', check='H'),
+                            FDummy(id=3, name='NAME_3_3', check='I')
                         ])
                     )
                 ]))
         with self.assertRaises(ValueError):
             result = test.__find__('**')
+        with self.assertRaises(ValueError):
+            result = test.__find__('**.*')
         result = test.__find__('**.name')
         self.assertEqual(13, len(result))
         self.assertTrue('NAME_5' in result)
@@ -987,9 +989,12 @@ class FinderTests(TestCase):
         self.assertTrue('NAME_1_3' in result)
         self.assertTrue('NAME_2_3' in result)
         self.assertTrue('NAME_3_3' in result)
-        result = test.__find__('embedded.sub[id=3,name="NAME_2_3"].name')
+        result = test.__find__('embedded.sub[id=3,name="NAME_2_3"].check')
         self.assertEqual(1, len(result))
-        self.assertTrue('NAME_2_3' in result)
+        self.assertTrue('F' in result)
+        result = test.__find__('embedded.sub[id=3,name="NAME_2_3"]')
+        self.assertEqual(1, len(result))
+        self.assertTrue(FDummy(id=3, name='NAME_2_3', check='F') in result)
         
         
         
