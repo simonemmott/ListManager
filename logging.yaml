@@ -64,8 +64,8 @@ handlers:
 
 loggers:
       
-  k2_util:
-    level: INFO
+  json_model:
+    level: DEBUG
     handlers: [console, info_file_handler, error_file_handler, critical_file_handler, debug_file_handler, warn_file_handler]
     propogate: yes
 

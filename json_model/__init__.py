@@ -1,12 +1,154 @@
+import logging
+logger = logging.getLogger(__name__)
 
+def _set_criteria(crit, name, value, criteria):
+    if not name:
+        raise ValueError(('Invalid syntax in criteria: {crit}'.format(crit=criteria)))
+    if len(value) == 0:
+        raise ValueError(('Invalid syntax in criteria: {crit}'.format(crit=criteria)))
+    try:
+        crit[name] = int(value)
+    except ValueError:
+        try:
+            crit[name] = float(value)
+        except ValueError:
+            if value.lower() == 'true':
+                crit[name] = True
+            elif value.lower() == 'false':
+                crit[name] = False
+            else:
+                raise ValueError(('Invalid syntax in criteria: {crit}'.format(crit=criteria)))                    
+
+def parse_criteria(criteria):
+    crit = {}
+    value = ''
+    name = None
+    quote = None
+    expect = None
+    for char in criteria:
+        logger.debug('name: {name}, value: {value}, expect: {expect}, quote: {quote}, char: {char}'.format(
+                name=name,
+                value=value,
+                expect=expect,
+                char=char,
+                quote=quote
+            ))
+        if expect:
+            logger.debug('EXPECT')
+            if char == expect:
+                expect = None
+                continue
+            raise ValueError(('Invalid syntax in criteria: {crit}'.format(crit=criteria)))
+        if quote and char == quote:
+            logger.debug('QUOTED and CHAR == QUOTE')
+            quote = None
+            crit[name] = value
+            name = None
+            value = ''
+            expect = ','
+            continue
+        if char in ['"',"'"] and not quote:
+            logger.debug('CHAR IS QUOTE AND NOT QUOTED')
+            if not name:
+                raise ValueError(('Invalid syntax in criteria: {crit}'.format(crit=criteria)))
+            quote = char
+            continue
+        if quote:
+            logger.debug('QUOTED')
+            value = value + char
+            continue
+        if char == ',':
+            logger.debug('COMMA')
+            if not name or value == '':
+                raise ValueError(('Invalid syntax in criteria: {crit}'.format(crit=criteria)))
+            _set_criteria(crit, name, value, criteria)
+            name = None
+            value = ''
+            continue
+        if char == '=':
+            logger.debug('EQUALS')
+            if value == '':
+                raise ValueError(('Invalid syntax in criteria: {crit}'.format(crit=criteria)))
+            name = value
+            value = ''
+            continue
+        logger.debug('ADD TO VALUE')
+        value = value + char
+    if quote:
+        raise ValueError(('Invalid syntax in criteria: {crit}'.format(crit=criteria)))
+    if len(value) > 0 and not name:
+        raise ValueError(('Invalid syntax in criteria: {crit}'.format(crit=criteria)))
+    if name:
+        _set_criteria(crit, name, value, criteria)
+    return crit
+        
+
+class Expression(object):
+    def __init__(self, path):
+        if path == None or path == '':
+            raise ValueError('You must supply a value for path')
+        names = path.split('.')
+        self.name = names[0]
+        self.criteria = None
+        self.index = None
+        if '[' in self.name:
+            if self.name[-1] != ']':
+                raise ValueError('Invalid syntax in path: {path}'.format(path=path))
+            criteria = self.name[self.name.index('[')+1:-1]
+            self.name = self.name[:self.name.index('[')]
+            try:
+                self.index = int(criteria)
+            except ValueError:
+                if '=' not in criteria:
+                    self.index = criteria
+                else:
+                    self.criteria = parse_criteria(criteria)
+        self.next = None
+        if len(names) > 1:
+            self.next = Expression('.'.join(names[1:]))
+            
+    def evaluate(self, obj):
+        if not hasattr(obj, self.name):
+            raise AttributeError('The object of type: {type} does not have an attribute: {attr}'.format(
+                    type = type(obj),
+                    attr = self.name
+                ))
+        value = getattr(obj, self.name)
+        if isinstance(value, ListManager):
+            logger.debug('Value is a ListManager')
+            if self.criteria:
+                logger.debug('ListManager with criteria: {crit}'.format(crit=self.criteria))
+                try:
+                    value = value.get(**self.criteria)
+                except DoesNotExist:
+                    value = None
+            elif self.index != None:
+                logger.debug('ListManager with index: {idx}'.format(idx=self.index))
+                length = len(value)
+                if self.index >= length or self.index < -length:
+                    value = None
+                else:
+                    value = value.all()[self.index]
+        elif self.criteria:
+            if not matches(value, **self.criteria):
+                value = None
+        if not value:
+            return None
+        if not self.next:
+            return value
+        return self.next.evaluate(value)
+
+class F(object):
+    def __init__(self, path):
+        self.path = path
 
 class DoesNotExist(Exception):
     pass
 
 
 class ManagedListIterator(object):
-    def __init__(self, gen, **kw):
-        self.__gen = gen
+    def __init__(self, data, **kw):
+        self.__data = data
         self.__length = None
         self.__criteria = kw
         self.__filtered = None
@@ -18,7 +160,7 @@ class ManagedListIterator(object):
     def __next__(self):
         if self.__index >= self.__len__():
             raise StopIteration       
-        item = self.__gen[self.__index]
+        item = self.__data[self.__index]
         self.__index = self.__index + 1
         if self.__criteria:
             if not matches(item, **self.__criteria):
@@ -28,7 +170,7 @@ class ManagedListIterator(object):
     def _apply_filter(self):
         count = 0
         self.__filtered = []
-        for item in self.__gen:
+        for item in self.__data:
             if matches(item, **self.__criteria):
                 self.__filtered.append(item)
                 count = count + 1
@@ -40,7 +182,7 @@ class ManagedListIterator(object):
             if self.__filtered:
                 return self.__length
             return self._apply_filter()  
-        return len(self.__gen)
+        return len(self.__data)
 
     def __len__(self):
         self.__length = self.__length if self.__length else self._get_length()
@@ -53,7 +195,32 @@ class ManagedListIterator(object):
             if not self.__filtered:
                 self._apply_filter()
             return self.__filtered[index]
-        return self.__gen[index]
+        return self.__data[index]
+    
+    def get(self, item=None, **kw):
+        if self.__criteria:
+            if not self.__filtered:
+                self._apply_filter()
+            data = self.__filtered
+        else:
+            data = self.__data   
+        if item:
+            for i in data:
+                if item == i:
+                    return i
+            raise DoesNotExist('The item: {item} does not exist in the supplied generator'.format(item=item))
+        else:
+            for i in data:
+                if matches(i, **kw):
+                    return i
+            raise DoesNotExist('The supplied generator does not include an item with keys {keys}'.format(
+                    keys = kw
+                ))
+               
+    def filter(self, **kw):
+        criteria = self.__criteria if self.__criteria else {}
+        criteria.update(kw)
+        return ManagedListIterator(self.__data, **criteria)
 
 def matches(item, **kw):
     for key, value in kw.items():
