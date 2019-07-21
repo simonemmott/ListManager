@@ -138,9 +138,8 @@ class Expression(object):
             return value
         return self.next.evaluate(value)
 
-class F(object):
-    def __init__(self, path):
-        self.path = path
+class F(Expression):
+    pass
 
 class DoesNotExist(Exception):
     pass
@@ -224,6 +223,8 @@ class ManagedListIterator(object):
 
 def matches(item, **kw):
     for key, value in kw.items():
+        if isinstance(value, F):
+            value = value.evaluate(item)
         if hasattr(item, key):
             if value != getattr(item, key):
                 return False
@@ -261,7 +262,7 @@ class ListManager(object):
             for i in self.__data:
                 if matches(i, **kw):
                     return i
-            raise DoesNotExist('The supplied generator does not include an item with keys {keys}'.format(
+            raise DoesNotExist('The list does not include an item with keys {keys}'.format(
                     keys = kw
                 ))
                
