@@ -152,14 +152,23 @@ class EmbeddedIterator(object):
         self.__criteria = kw
         self.__filtered = None
         
+    def is_dict(self):
+        return isinstance(self.__data, dict)
+        
+    def is_list(self):
+        return isinstance(self.__data, list)
+        
     def __iter__(self):
         self.__index = 0
         return self
     
     def __next__(self):
         if self.__index >= self.__len__():
-            raise StopIteration       
-        item = self.__data[self.__index]
+            raise StopIteration
+        if self.is_dict():
+            item = list(self.__data)[self.__index]
+        else:            
+            item = self.__data[self.__index]
         self.__index = self.__index + 1
         if self.__criteria:
             if not matches(item, **self.__criteria):
@@ -168,11 +177,18 @@ class EmbeddedIterator(object):
     
     def _apply_filter(self):
         count = 0
-        self.__filtered = []
-        for item in self.__data:
-            if matches(item, **self.__criteria):
-                self.__filtered.append(item)
-                count = count + 1
+        if self.is_dict():
+            self.__filtered = {}
+            for key, value in self.__data.items():
+                if matches(value, **self.__criteria):
+                    self.__filtered[key] = value
+                    count = count + 1
+        else:
+            self.__filtered = []
+            for item in self.__data:
+                if matches(item, **self.__criteria):
+                    self.__filtered.append(item)
+                    count = count + 1
         self.__length = count
         return count
     
@@ -188,13 +204,39 @@ class EmbeddedIterator(object):
         return self.__length
     
     def __getitem__(self, index):
-        if index < 0 or index >= self.__len__():
-            raise IndexError('Index [{index}] out of range'.format(index=index))
+        if self.is_list():
+            if index < 0 or index >= self.__len__():
+                raise IndexError('Index [{index}] out of range'.format(index=index))
         if self.__criteria:
             if not self.__filtered:
                 self._apply_filter()
             return self.__filtered[index]
         return self.__data[index]
+    
+    def __contains__(self, item):
+        return self._invoke_data_method('__contains__', item)
+    
+    def _invoke_data_method(self, method, *args, **kw):
+        if self.__criteria:
+            if not self.__filtered:
+                self._apply_filter()
+            data = self.__filtered
+        else:
+            data = self.__data
+        return getattr(data, method)(*args, **kw)
+        
+    
+    def keys(self):
+        return self._invoke_data_method('keys')
+        
+    def values(self):
+        return self._invoke_data_method('values')
+    
+    def items(self):
+        return self._invoke_data_method('items')
+    
+    def copy(self):
+        return self._invoke_data_method('copy')
     
     def get(self, item=None, **kw):
         if self.__criteria:
@@ -204,15 +246,25 @@ class EmbeddedIterator(object):
         else:
             data = self.__data   
         if item:
-            for i in data:
-                if item == i:
-                    return i
-            raise DoesNotExist('The item: {item} does not exist in the supplied generator'.format(item=item))
+            if self.is_dict():
+                value = data.get(item, None)
+                if value != None:
+                    return value
+            else:
+                for i in data:
+                    if item == i:
+                        return i
+            raise DoesNotExist('The item: {item} does not exist in the embedded data'.format(item=item))
         else:
-            for i in data:
-                if matches(i, **kw):
-                    return i
-            raise DoesNotExist('The supplied generator does not include an item with keys {keys}'.format(
+            if self.is_dict():
+                for key, value in data.items():
+                    if matches(value, **kw):
+                        return value
+            else:
+                for i in data:
+                    if matches(i, **kw):
+                        return i
+            raise DoesNotExist('The embedded does not include an item with keys {keys}'.format(
                     keys = kw
                 ))
                
@@ -242,29 +294,53 @@ class EmbeddedManager(object):
         self.__type = kw.get('type', None)
         self.__length = None
         
+    def is_dict(self):
+        return isinstance(self.__data, dict)
+        
+    def is_list(self):
+        return isinstance(self.__data, list)
+        
     def _get_length(self):
         return len(self.__data)
 
     def __len__(self):
         self.__length = self.__length if self.__length else self._get_length()
         return self.__length
+    
+    def __contains__(self, item):
+        return self.__data.__contains__(item)
         
     def all(self):
         return EmbeddedIterator(self.__data)
     
     def get(self, item=None, **kw):
         if item:
-            for i in self.__data:
-                if item == i:
+            if isinstance(self.__data, dict):
+                i = self.__data.get(item, None)
+                if i != None:
                     return i
-            raise DoesNotExist('The item: {item} does not exist in the supplied generator'.format(item=item))
+                raise DoesNotExist('The item: {item} does not exist in the embedded data'.format(item=item))
+            else:
+                for i in self.__data:
+                    if item == i:
+                        return i
+                raise DoesNotExist('The item: {item} does not exist in the embedded data'.format(item=item))
         else:
-            for i in self.__data:
-                if matches(i, **kw):
-                    return i
-            raise DoesNotExist('The list does not include an item with keys {keys}'.format(
-                    keys = kw
-                ))
+            if isinstance(self.__data, dict):
+                for key, value in self.__data.items():
+                    if matches(value, **kw):
+                        return value
+                raise DoesNotExist('The embedded data does not include an item with keys {keys}'.format(
+                        keys = kw
+                    ))
+                
+            else:
+                for i in self.__data:
+                    if matches(i, **kw):
+                        return i
+                raise DoesNotExist('The embedded data does not include an item with keys {keys}'.format(
+                        keys = kw
+                    ))
                
     def filter(self, **kw):
         return EmbeddedIterator(self.__data, **kw)
@@ -274,13 +350,41 @@ class EmbeddedManager(object):
         if self.__length:
             self.__length = self.__length + 1
         return item
+    
+    def extend(self, iterable):
+        self.__data.extend(iterable)
+        if self.__length:
+            self.__length = self.__length + len(iterable)
+    
+    def update(self, dct):
+        self.__data.update(dct)
+        if self.__length:
+            self.__length = None
+            self.__length = len(self)
+            
+    def keys(self):
+        return self.__data.keys()
+        
+    def values(self):
+        return self.__data.values()
+    
+    def items(self):
+        return self.__data.items()
+        
+    def copy(self):
+        return self.__data.copy()
         
     def create(self, *args, **kw):
         if not self.__type:
             raise TypeError('No type defined for EmbeddedManager')
-        new = self.__type(*args, **kw)
-        return self.append(new)
-    
+        if self.is_list():
+            return self.append(self.__type(*args, **kw))
+        if self.is_dict():
+            if len(args) == 0:
+                raise ValueError('You must supply a key value to create a item in a dictionary')
+            new = self.__type(*args[1:], **kw)
+            self.update({args[0]: new})
+            return new
     def set(self, data):
         self.__data = data
         self.__length = None

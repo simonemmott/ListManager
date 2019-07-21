@@ -6,6 +6,23 @@ class Dummy(object):
         for key, value in kw.items():
             setattr(self, key, value)
             
+    def __eq__(self, *args, **kwargs):
+        if len(args) == 0:
+            return False
+        for attr in dir(self):
+            if attr[0] != '_':
+                if not hasattr(args[0], attr):
+                    return False
+                lhs = getattr(args[0], attr)
+                rhs = getattr(self, attr)
+                if lhs == None and rhs != None:
+                    return False
+                if rhs == None and lhs != None:
+                    return False
+                if lhs != rhs:
+                    return False
+        return True
+            
             
 class ExpressionTests(TestCase):
     
@@ -193,12 +210,45 @@ class EmbeddedManagerTests(TestCase):
         with self.assertRaises(DoesNotExist):
             lm.get('z')
         
+    def test_get_item_from_dict(self):
+        data = {'key1': 'a', 'key2': 'b', 'key3': 'c'}
+        lm = EmbeddedManager(data)
+        self.assertEqual('a', lm.get('key1'))
+        self.assertEqual('b', lm.get('key2'))
+        self.assertEqual('c', lm.get('key3'))
+        with self.assertRaises(DoesNotExist):
+            lm.get('key4')
+        
     def test_get_with_key(self):
         data = [
             Dummy(id=1, name='NAME_1'),
             Dummy(id=2, name='NAME_2'),
             Dummy(id=3, name='NAME_3')
         ]
+        lm = EmbeddedManager(data)
+        self.assertTrue(isinstance(lm.get(id=1), Dummy))
+        self.assertEqual(1, lm.get(id=1).id)
+        self.assertEqual('NAME_1', lm.get(id=1).name)
+        self.assertTrue(isinstance(lm.get(id=2), Dummy))
+        self.assertEqual(2, lm.get(id=2).id)
+        self.assertEqual('NAME_2', lm.get(id=2).name)
+        self.assertTrue(isinstance(lm.get(id=3), Dummy))
+        self.assertEqual(3, lm.get(id=3).id)
+        self.assertEqual('NAME_3', lm.get(id=3).name)
+        with self.assertRaises(DoesNotExist):
+            lm.get(id=4)
+        with self.assertRaises(AttributeError):
+            lm.get(xxx=1)
+        self.assertTrue(isinstance(lm.get(name='NAME_1'), Dummy))
+        self.assertEqual(1, lm.get(name='NAME_1').id)
+        self.assertEqual('NAME_1', lm.get(name='NAME_1').name)
+
+    def test_get_with_key_from_dict(self):
+        data = {
+            'key1': Dummy(id=1, name='NAME_1'),
+            'key2': Dummy(id=2, name='NAME_2'),
+            'key3': Dummy(id=3, name='NAME_3')
+        }
         lm = EmbeddedManager(data)
         self.assertTrue(isinstance(lm.get(id=1), Dummy))
         self.assertEqual(1, lm.get(id=1).id)
@@ -231,6 +281,20 @@ class EmbeddedManagerTests(TestCase):
         with self.assertRaises(DoesNotExist):
             lm.get(id=3, name='NAME_A')
 
+    def test_get_with_keys_from_dict(self):
+        data = {
+            'key1': Dummy(id=1, name='NAME_A'),
+            'key2': Dummy(id=2, name='NAME_A'),
+            'key3': Dummy(id=3, name='NAME_B'),
+            'key4': Dummy(id=4, name='NAME_B')
+        }
+        lm = EmbeddedManager(data)
+        self.assertTrue(isinstance(lm.get(id=1, name='NAME_A'), Dummy))
+        self.assertEqual(1, lm.get(id=1, name='NAME_A').id)
+        self.assertEqual('NAME_A', lm.get(id=1, name='NAME_A').name)
+        with self.assertRaises(DoesNotExist):
+            lm.get(id=3, name='NAME_A')
+
     def test_filter_with_keys(self):
         data = [
             Dummy(id=1, name='NAME_A'),
@@ -253,6 +317,28 @@ class EmbeddedManagerTests(TestCase):
         self.assertEqual(2, lm.filter(name='NAME_A')[1].id)
         self.assertEqual('NAME_A', lm.filter(name='NAME_A')[1].name)
         
+    def test_filter_with_keys_from_dict(self):
+        data = {
+            'key1': Dummy(id=1, name='NAME_A'),
+            'key2': Dummy(id=2, name='NAME_A'),
+            'key3': Dummy(id=3, name='NAME_B'),
+            'key4': Dummy(id=4, name='NAME_B')
+        }
+        lm = EmbeddedManager(data)
+        
+        self.assertEqual(1, len(lm.filter(id=1, name='NAME_A')))
+        self.assertTrue(isinstance(lm.filter(id=1, name='NAME_A')['key1'], Dummy))
+        self.assertEqual(1, lm.filter(id=1, name='NAME_A')['key1'].id)
+        self.assertEqual('NAME_A', lm.filter(id=1, name='NAME_A')['key1'].name)
+
+        self.assertEqual(2, len(lm.filter(name='NAME_A')))
+        self.assertTrue(isinstance(lm.filter(name='NAME_A')['key1'], Dummy))
+        self.assertEqual(1, lm.filter(name='NAME_A')['key1'].id)
+        self.assertEqual('NAME_A', lm.filter(name='NAME_A')['key1'].name)
+        self.assertTrue(isinstance(lm.filter(name='NAME_A')['key2'], Dummy))
+        self.assertEqual(2, lm.filter(name='NAME_A')['key2'].id)
+        self.assertEqual('NAME_A', lm.filter(name='NAME_A')['key2'].name)
+        
     def test_length(self):
         data = [
             Dummy(id=1, name='NAME_A'),
@@ -260,6 +346,16 @@ class EmbeddedManagerTests(TestCase):
             Dummy(id=3, name='NAME_B'),
             Dummy(id=4, name='NAME_B')
         ]
+        lm = EmbeddedManager(data)
+        self.assertEqual(4, len(lm))
+        
+    def test_length_of_dict(self):
+        data = {
+            'key1': Dummy(id=1, name='NAME_A'),
+            'key2': Dummy(id=2, name='NAME_A'),
+            'key3': Dummy(id=3, name='NAME_B'),
+            'key4': Dummy(id=4, name='NAME_B')
+        }
         lm = EmbeddedManager(data)
         self.assertEqual(4, len(lm))
         
@@ -280,6 +376,111 @@ class EmbeddedManagerTests(TestCase):
         self.assertEqual(5, lm.filter(name='NAME_C')[0].id)
         self.assertEqual('NAME_C', lm.filter(name='NAME_C')[0].name)
         
+    def test_extend(self):
+        data = [
+            Dummy(id=1, name='NAME_A'),
+            Dummy(id=2, name='NAME_A'),
+            Dummy(id=3, name='NAME_B'),
+            Dummy(id=4, name='NAME_B')
+        ]
+        lm = EmbeddedManager(data)
+        lm.extend([
+            Dummy(id=5, name='NAME_C'),
+            Dummy(id=6, name='NAME_C'),
+            ])
+        self.assertEqual(6, len(lm))
+        self.assertEqual(5, lm.get(id=5).id)
+        self.assertEqual('NAME_C', lm.get(id=5).name)
+        self.assertEqual(6, lm.get(id=6).id)
+        self.assertEqual('NAME_C', lm.get(id=6).name)
+        self.assertEqual(2, len(lm.filter(name='NAME_C')))
+        self.assertEqual(5, lm.filter(name='NAME_C')[0].id)
+        self.assertEqual('NAME_C', lm.filter(name='NAME_C')[0].name)
+        self.assertEqual(6, lm.filter(name='NAME_C')[1].id)
+        self.assertEqual('NAME_C', lm.filter(name='NAME_C')[1].name)
+        
+    def test_update(self):
+        data = {
+            'key1': Dummy(id=1, name='NAME_A'),
+            'key2': Dummy(id=2, name='NAME_A'),
+            'key3': Dummy(id=3, name='NAME_B'),
+            'key4': Dummy(id=4, name='NAME_B')
+        }
+        lm = EmbeddedManager(data)
+        lm.update({
+            'key4': Dummy(id=5, name='NAME_C'),
+            'key5': Dummy(id=6, name='NAME_C'),
+            })
+        self.assertEqual(5, len(lm))
+        self.assertEqual(5, lm.get('key4').id)
+        self.assertEqual('NAME_C', lm.get('key4').name)
+        self.assertEqual(6, lm.get(id=6).id)
+        self.assertEqual('NAME_C', lm.get('key5').name)
+        self.assertEqual(2, len(lm.filter(name='NAME_C')))
+        self.assertEqual(5, lm.filter(name='NAME_C')['key4'].id)
+        self.assertEqual('NAME_C', lm.filter(name='NAME_C')['key4'].name)
+        self.assertEqual(6, lm.filter(name='NAME_C')['key5'].id)
+        self.assertEqual('NAME_C', lm.filter(name='NAME_C')['key5'].name)
+        
+    def test_keys(self):
+        data = {
+            'key1': Dummy(id=1, name='NAME_A'),
+            'key2': Dummy(id=2, name='NAME_A'),
+            'key3': Dummy(id=3, name='NAME_B'),
+            'key4': Dummy(id=4, name='NAME_B')
+        }
+        lm = EmbeddedManager(data)
+        self.assertTrue('key1' in lm.keys())
+        self.assertTrue('key2' in lm.keys())
+        self.assertTrue('key3' in lm.keys())
+        self.assertTrue('key4' in lm.keys())
+        self.assertEqual(4, len(lm.keys()))
+        
+    def test_values(self):
+        data = {
+            'key1': Dummy(id=1, name='NAME_A'),
+            'key2': Dummy(id=2, name='NAME_A'),
+            'key3': Dummy(id=3, name='NAME_B'),
+            'key4': Dummy(id=4, name='NAME_B')
+        }
+        lm = EmbeddedManager(data)
+        self.assertTrue(data['key1'] in lm.values())
+        self.assertTrue(data['key2'] in lm.values())
+        self.assertTrue(Dummy(id=3, name='NAME_B') in lm.values())
+        self.assertTrue(Dummy(id=4, name='NAME_B') in lm.values())
+        self.assertEqual(4, len(lm.values()))
+        
+    def test_items(self):
+        data = {
+            'key1': Dummy(id=1, name='NAME_A'),
+            'key2': Dummy(id=2, name='NAME_A'),
+            'key3': Dummy(id=3, name='NAME_B'),
+            'key4': Dummy(id=4, name='NAME_B')
+        }
+        lm = EmbeddedManager(data)
+        for key, value in lm.items():
+            self.assertEqual(data[key], value)
+        
+    def test_copy_with_dict(self):
+        data = {
+            'key1': Dummy(id=1, name='NAME_A'),
+            'key2': Dummy(id=2, name='NAME_A'),
+            'key3': Dummy(id=3, name='NAME_B'),
+            'key4': Dummy(id=4, name='NAME_B')
+        }
+        lm = EmbeddedManager(data)
+        self.assertEqual(data, lm.copy())
+        
+    def test_copy_with_list(self):
+        data = [
+            Dummy(id=1, name='NAME_A'),
+            Dummy(id=2, name='NAME_A'),
+            Dummy(id=3, name='NAME_B'),
+            Dummy(id=4, name='NAME_B')
+        ]
+        lm = EmbeddedManager(data)
+        self.assertEqual(data, lm.copy())
+
     def test_create_with_no_type(self):
         data = [
             Dummy(id=1, name='NAME_A'),
@@ -290,6 +491,96 @@ class EmbeddedManagerTests(TestCase):
         lm = EmbeddedManager(data)
         with self.assertRaisesRegex(TypeError, 'No type defined for EmbeddedManager'):
             lm.create(id=5, name='CREATED')
+
+    def test_in_filtered_list(self):
+        data = [
+            Dummy(id=1, name='NAME_A'),
+            Dummy(id=2, name='NAME_A'),
+            Dummy(id=3, name='NAME_B'),
+            Dummy(id=4, name='NAME_B')
+        ]
+        lm = EmbeddedManager(data)
+        self.assertTrue(Dummy(id=3, name='NAME_B') in lm.filter(name='NAME_B'))
+        self.assertTrue(Dummy(id=4, name='NAME_B') in lm.filter(name='NAME_B'))
+
+    def test_in_filtered_dict(self):
+        data = {
+            'key1': Dummy(id=1, name='NAME_A'),
+            'key2': Dummy(id=2, name='NAME_A'),
+            'key3': Dummy(id=3, name='NAME_B'),
+            'key4': Dummy(id=4, name='NAME_B')
+        }
+        lm = EmbeddedManager(data)
+        self.assertEqual(2, len(lm.filter(name='NAME_B')))
+        self.assertTrue('key3' in lm.filter(name='NAME_B'))
+        self.assertTrue('key4' in lm.filter(name='NAME_B'))
+
+    def test_keys_in_filtered_dict(self):
+        data = {
+            'key1': Dummy(id=1, name='NAME_A'),
+            'key2': Dummy(id=2, name='NAME_A'),
+            'key3': Dummy(id=3, name='NAME_B'),
+            'key4': Dummy(id=4, name='NAME_B')
+        }
+        lm = EmbeddedManager(data)
+        self.assertEqual(2, len(lm.filter(name='NAME_B').keys()))
+        self.assertTrue('key3' in lm.filter(name='NAME_B').keys())
+        self.assertTrue('key4' in lm.filter(name='NAME_B').keys())
+
+    def test_values_in_filtered_dict(self):
+        data = {
+            'key1': Dummy(id=1, name='NAME_A'),
+            'key2': Dummy(id=2, name='NAME_A'),
+            'key3': Dummy(id=3, name='NAME_B'),
+            'key4': Dummy(id=4, name='NAME_B')
+        }
+        lm = EmbeddedManager(data)
+        self.assertEqual(2, len(lm.filter(name='NAME_B').values()))
+        self.assertTrue(Dummy(id=3, name='NAME_B') in lm.filter(name='NAME_B').values())
+        self.assertTrue(Dummy(id=4, name='NAME_B') in lm.filter(name='NAME_B').values())
+
+    def test_items_in_filtered_dict(self):
+        data = {
+            'key1': Dummy(id=1, name='NAME_A'),
+            'key2': Dummy(id=2, name='NAME_A'),
+            'key3': Dummy(id=3, name='NAME_B'),
+            'key4': Dummy(id=4, name='NAME_B')
+        }
+        lm = EmbeddedManager(data)
+        self.assertEqual(2, len(lm.filter(name='NAME_B').items()))
+        self.assertTrue(('key3', Dummy(id=3, name='NAME_B')) in lm.filter(name='NAME_B').items())
+        self.assertTrue(('key4', Dummy(id=4, name='NAME_B')) in lm.filter(name='NAME_B').items())
+
+    def test_copy_with_filtered_list(self):
+        data = [
+            Dummy(id=1, name='NAME_A'),
+            Dummy(id=2, name='NAME_A'),
+            Dummy(id=3, name='NAME_B'),
+            Dummy(id=4, name='NAME_B')
+        ]
+        lm = EmbeddedManager(data, type=Dummy)
+        self.assertEqual([
+                Dummy(id=3, name='NAME_B'),
+                Dummy(id=4, name='NAME_B')
+            ],
+            lm.filter(name='NAME_B').copy()
+        )
+
+    def test_copy_with_filtered_dict(self):
+        data = {
+            'key1': Dummy(id=1, name='NAME_A'),
+            'key2': Dummy(id=2, name='NAME_A'),
+            'key3': Dummy(id=3, name='NAME_B'),
+            'key4': Dummy(id=4, name='NAME_B')
+        }
+        lm = EmbeddedManager(data, type=Dummy)
+        self.assertEqual({
+                'key3': Dummy(id=3, name='NAME_B'),
+                'key4': Dummy(id=4, name='NAME_B')
+            }
+            ,
+            lm.filter(name='NAME_B').copy()
+        )
 
     def test_create_with_type(self):
         data = [
@@ -309,6 +600,35 @@ class EmbeddedManagerTests(TestCase):
         self.assertEqual(5, got.id)
         self.assertEqual('CREATED', got.name)
 
+    def test_create_with_no_key_in_dict_with_type(self):
+        data = {
+            'key1': Dummy(id=1, name='NAME_A'),
+            'key2': Dummy(id=2, name='NAME_A'),
+            'key3': Dummy(id=3, name='NAME_B'),
+            'key4': Dummy(id=4, name='NAME_B')
+        }
+        lm = EmbeddedManager(data, type=Dummy)
+        with self.assertRaises(ValueError):
+            created = lm.create(id=5, name='CREATED')
+
+    def test_create_with_key_in_dict_with_type(self):
+        data = {
+            'key1': Dummy(id=1, name='NAME_A'),
+            'key2': Dummy(id=2, name='NAME_A'),
+            'key3': Dummy(id=3, name='NAME_B'),
+            'key4': Dummy(id=4, name='NAME_B')
+        }
+        lm = EmbeddedManager(data, type=Dummy)
+        created = lm.create('key5', id=5, name='CREATED')
+        self.assertIsNotNone(created)
+        self.assertTrue(isinstance(created, Dummy))
+        self.assertEqual(5, created.id)
+        self.assertEqual('CREATED', created.name)
+        self.assertEqual(5, len(lm))
+        got = lm.get('key5')
+        self.assertEqual(5, got.id)
+        self.assertEqual('CREATED', got.name)
+
     def test_chained_filter(self):
         data = [
             Dummy(id=1, name='NAME_A', flag='A'),
@@ -324,6 +644,21 @@ class EmbeddedManagerTests(TestCase):
         self.assertEqual('NAME_B', lm.filter(name='NAME_B').filter(flag='B')[0].name)
         self.assertEqual('B', lm.filter(name='NAME_B').filter(flag='B')[0].flag)
         
+    def test_chained_filter_with_dict(self):
+        data = {
+            'key1': Dummy(id=1, name='NAME_A', flag='A'),
+            'key2': Dummy(id=2, name='NAME_A', flag='B'),
+            'key3': Dummy(id=3, name='NAME_B', flag='C'),
+            'key4': Dummy(id=4, name='NAME_B', flag='A'),
+            'key5': Dummy(id=5, name='NAME_B', flag='B'),
+            'key6': Dummy(id=6, name='NAME_B', flag='C')
+        }
+        lm = EmbeddedManager(data, type=Dummy)
+        self.assertEqual(1, len(lm.filter(name='NAME_B').filter(flag='B')))
+        self.assertEqual(5, lm.filter(name='NAME_B').filter(flag='B')['key5'].id)
+        self.assertEqual('NAME_B', lm.filter(name='NAME_B').filter(flag='B')['key5'].name)
+        self.assertEqual('B', lm.filter(name='NAME_B').filter(flag='B')['key5'].flag)
+        
     def test_filter_get(self):
         data = [
             Dummy(id=1, name='NAME_A', flag='A'),
@@ -333,6 +668,22 @@ class EmbeddedManagerTests(TestCase):
             Dummy(id=5, name='NAME_B', flag='B'),
             Dummy(id=6, name='NAME_B', flag='C')
         ]
+        lm = EmbeddedManager(data, type=Dummy)
+        self.assertEqual(5, lm.filter(name='NAME_B').get(flag='B').id)
+        self.assertEqual('NAME_B', lm.filter(name='NAME_B').get(flag='B').name)
+        self.assertEqual('B', lm.filter(name='NAME_B').get(flag='B').flag)
+        with self.assertRaises(DoesNotExist):
+            lm.filter(name='NAME_A').get(flag='C')
+        
+    def test_filter_get_with_dict(self):
+        data = {
+            'key1': Dummy(id=1, name='NAME_A', flag='A'),
+            'key2': Dummy(id=2, name='NAME_A', flag='B'),
+            'key3': Dummy(id=3, name='NAME_B', flag='C'),
+            'key4': Dummy(id=4, name='NAME_B', flag='A'),
+            'key5': Dummy(id=5, name='NAME_B', flag='B'),
+            'key6': Dummy(id=6, name='NAME_B', flag='C')
+        }
         lm = EmbeddedManager(data, type=Dummy)
         self.assertEqual(5, lm.filter(name='NAME_B').get(flag='B').id)
         self.assertEqual('NAME_B', lm.filter(name='NAME_B').get(flag='B').name)
@@ -352,6 +703,18 @@ class EmbeddedManagerTests(TestCase):
         lm = EmbeddedManager(data, type=Dummy)
         self.assertEqual(2, lm.get(name=F('check')).id)
         
+    def test_get_from_dict_with_field(self):
+        data = {
+            'key1': Dummy(id=1, name='NAME_A', check='NAME_X'),
+            'key2': Dummy(id=2, name='NAME_A', check='NAME_A'),
+            'key3': Dummy(id=3, name='NAME_B', check='NAME_X'),
+            'key4': Dummy(id=4, name='NAME_B', check='NAME_X'),
+            'key5': Dummy(id=5, name='NAME_B', check='NAME_B'),
+            'key6': Dummy(id=6, name='NAME_B', check='NAME_B')
+        }
+        lm = EmbeddedManager(data, type=Dummy)
+        self.assertEqual(2, lm.get(name=F('check')).id)
+        
     def test_filter_with_field(self):
         data = [
             Dummy(id=1, name='NAME_A', check='NAME_X'),
@@ -366,6 +729,21 @@ class EmbeddedManagerTests(TestCase):
         self.assertEqual(2, lm.filter(name=F('check'))[0].id)
         self.assertEqual(5, lm.filter(name=F('check'))[1].id)
         self.assertEqual(6, lm.filter(name=F('check'))[2].id)
+        
+    def test_filter_dict_with_field(self):
+        data = {
+            'key1': Dummy(id=1, name='NAME_A', check='NAME_X'),
+            'key2': Dummy(id=2, name='NAME_A', check='NAME_A'),
+            'key3': Dummy(id=3, name='NAME_B', check='NAME_X'),
+            'key4': Dummy(id=4, name='NAME_B', check='NAME_X'),
+            'key5': Dummy(id=5, name='NAME_B', check='NAME_B'),
+            'key6': Dummy(id=6, name='NAME_B', check='NAME_B')
+        }
+        lm = EmbeddedManager(data, type=Dummy)
+        self.assertEqual(3, len(lm.filter(name=F('check'))))
+        self.assertEqual(2, lm.filter(name=F('check'))['key2'].id)
+        self.assertEqual(5, lm.filter(name=F('check'))['key5'].id)
+        self.assertEqual(6, lm.filter(name=F('check'))['key6'].id)
         
     def test_set(self):
         data = [
@@ -397,8 +775,6 @@ class EmbeddedManagerTests(TestCase):
         self.assertEqual(6, len(lm))
         lm.clear()
         self.assertEqual(0, len(lm))
-        
-        
         
         
         
