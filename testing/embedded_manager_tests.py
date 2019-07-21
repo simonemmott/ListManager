@@ -982,6 +982,14 @@ class FinderTests(TestCase):
         self.assertTrue('NAME_2_3' in result)
         result = test.__find__('**[id=6].name')
         self.assertEqual(0, len(result))
+        result = test.__find__('embedded.sub[id=3].name')
+        self.assertEqual(3, len(result))
+        self.assertTrue('NAME_1_3' in result)
+        self.assertTrue('NAME_2_3' in result)
+        self.assertTrue('NAME_3_3' in result)
+        result = test.__find__('embedded.sub[id=3,name="NAME_2_3"].name')
+        self.assertEqual(1, len(result))
+        self.assertTrue('NAME_2_3' in result)
         
         
         
