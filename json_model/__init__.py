@@ -237,7 +237,7 @@ def matches(item, **kw):
 
 class ListManager(object):
     
-    def __init__(self, data, **kw):
+    def __init__(self, data=[], **kw):
         self.__data = data
         self.__type = kw.get('type', None)
         self.__length = None
@@ -280,6 +280,14 @@ class ListManager(object):
             raise TypeError('No type defined for ListManager')
         new = self.__type(*args, **kw)
         return self.append(new)
+    
+    def set(self, data):
+        self.__data = data
+        self.__length = None
+        
+    def clear(self):
+        self.__data = []
+        self.__length = 0
             
             
             

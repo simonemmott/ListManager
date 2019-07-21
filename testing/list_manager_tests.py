@@ -367,6 +367,37 @@ class ListManagerTests(TestCase):
         self.assertEqual(5, lm.filter(name=F('check'))[1].id)
         self.assertEqual(6, lm.filter(name=F('check'))[2].id)
         
+    def test_set(self):
+        data = [
+            Dummy(id=1, name='NAME_A', check='NAME_X'),
+            Dummy(id=2, name='NAME_A', check='NAME_A'),
+            Dummy(id=3, name='NAME_B', check='NAME_X'),
+            Dummy(id=4, name='NAME_B', check='NAME_X'),
+            Dummy(id=5, name='NAME_B', check='NAME_B'),
+            Dummy(id=6, name='NAME_B', check='NAME_B')
+        ]
+        lm = ListManager(type=Dummy)
+        self.assertEqual(0, len(lm))
+        lm.set(data)
+        self.assertEqual(6, len(lm))
+        self.assertEqual(2, lm.filter(name=F('check'))[0].id)
+        self.assertEqual(5, lm.filter(name=F('check'))[1].id)
+        self.assertEqual(6, lm.filter(name=F('check'))[2].id)
+        
+    def test_clear(self):
+        data = [
+            Dummy(id=1, name='NAME_A', check='NAME_X'),
+            Dummy(id=2, name='NAME_A', check='NAME_A'),
+            Dummy(id=3, name='NAME_B', check='NAME_X'),
+            Dummy(id=4, name='NAME_B', check='NAME_X'),
+            Dummy(id=5, name='NAME_B', check='NAME_B'),
+            Dummy(id=6, name='NAME_B', check='NAME_B')
+        ]
+        lm = ListManager(data, type=Dummy)
+        self.assertEqual(6, len(lm))
+        lm.clear()
+        self.assertEqual(0, len(lm))
+        
         
         
         
