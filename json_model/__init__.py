@@ -114,16 +114,16 @@ class Expression(object):
                     attr = self.name
                 ))
         value = getattr(obj, self.name)
-        if isinstance(value, ListManager):
-            logger.debug('Value is a ListManager')
+        if isinstance(value, EmbeddedManager):
+            logger.debug('Value is an EmbeddedManager')
             if self.criteria:
-                logger.debug('ListManager with criteria: {crit}'.format(crit=self.criteria))
+                logger.debug('EmbeddedManager with criteria: {crit}'.format(crit=self.criteria))
                 try:
                     value = value.get(**self.criteria)
                 except DoesNotExist:
                     value = None
             elif self.index != None:
-                logger.debug('ListManager with index: {idx}'.format(idx=self.index))
+                logger.debug('EmbeddedManager with index: {idx}'.format(idx=self.index))
                 length = len(value)
                 if self.index >= length or self.index < -length:
                     value = None
@@ -145,7 +145,7 @@ class DoesNotExist(Exception):
     pass
 
 
-class ManagedListIterator(object):
+class EmbeddedIterator(object):
     def __init__(self, data, **kw):
         self.__data = data
         self.__length = None
@@ -219,7 +219,7 @@ class ManagedListIterator(object):
     def filter(self, **kw):
         criteria = self.__criteria if self.__criteria else {}
         criteria.update(kw)
-        return ManagedListIterator(self.__data, **criteria)
+        return EmbeddedIterator(self.__data, **criteria)
 
 def matches(item, **kw):
     for key, value in kw.items():
@@ -235,7 +235,7 @@ def matches(item, **kw):
                 ))
     return True
 
-class ListManager(object):
+class EmbeddedManager(object):
     
     def __init__(self, data=[], **kw):
         self.__data = data
@@ -250,7 +250,7 @@ class ListManager(object):
         return self.__length
         
     def all(self):
-        return ManagedListIterator(self.__data)
+        return EmbeddedIterator(self.__data)
     
     def get(self, item=None, **kw):
         if item:
@@ -267,7 +267,7 @@ class ListManager(object):
                 ))
                
     def filter(self, **kw):
-        return ManagedListIterator(self.__data, **kw)
+        return EmbeddedIterator(self.__data, **kw)
     
     def append(self, item):
         self.__data.append(item)
@@ -277,7 +277,7 @@ class ListManager(object):
         
     def create(self, *args, **kw):
         if not self.__type:
-            raise TypeError('No type defined for ListManager')
+            raise TypeError('No type defined for EmbeddedManager')
         new = self.__type(*args, **kw)
         return self.append(new)
     

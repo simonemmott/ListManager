@@ -1,5 +1,5 @@
 from unittest import TestCase
-from json_model import ListManager, DoesNotExist, F, Expression, parse_criteria
+from json_model import EmbeddedManager, DoesNotExist, F, Expression, parse_criteria
 
 class Dummy(object):
     def __init__(self, **kw):
@@ -96,7 +96,7 @@ class ExpressionTests(TestCase):
                     name='NAME_1', 
                     flag=True, 
                     link=Dummy(id=2, name='NAME_2'),
-                    objects=ListManager([
+                    objects=EmbeddedManager([
                             Dummy(id=3, name='NAME_3'),
                             Dummy(id=4, name='NAME_4'),
                             Dummy(id=5, name='NAME_5'),
@@ -129,7 +129,7 @@ class ExpressionTests(TestCase):
                     name='NAME_1', 
                     flag=True, 
                     link=Dummy(id=2, name='NAME_2'),
-                    objects=ListManager([
+                    objects=EmbeddedManager([
                             Dummy(id=3, name='NAME_3'),
                             Dummy(id=4, name='NAME_4'),
                             Dummy(id=5, name='NAME_5'),
@@ -147,7 +147,7 @@ class ExpressionTests(TestCase):
                     name='NAME_1', 
                     flag=True, 
                     link=Dummy(id=2, name='NAME_2'),
-                    objects=ListManager([
+                    objects=EmbeddedManager([
                             Dummy(id=3, name='NAME_3'),
                             Dummy(id=4, name='NAME_4'),
                             Dummy(id=5, name='NAME_5'),
@@ -161,16 +161,16 @@ class ExpressionTests(TestCase):
         
 
 
-class ListManagerTests(TestCase):
+class EmbeddedManagerTests(TestCase):
 
     def test_new_instance(self):
         data = ['a', 'b', 'c']
-        lm = ListManager(data)
+        lm = EmbeddedManager(data)
         self.assertIsNotNone(lm)
         
     def test_all_is_an_iterator(self):
         data = ['a', 'b', 'c']
-        lm = ListManager(data)
+        lm = EmbeddedManager(data)
         i=0
         for item in lm.all():
             self.assertEqual(data[i], item)
@@ -178,7 +178,7 @@ class ListManagerTests(TestCase):
         
     def test_all_is_indexable(self):
         data = ['a', 'b', 'c']
-        lm = ListManager(data)
+        lm = EmbeddedManager(data)
         i=0
         self.assertEqual('a', lm.all()[0])
         self.assertEqual('b', lm.all()[1])
@@ -186,7 +186,7 @@ class ListManagerTests(TestCase):
         
     def test_get_item(self):
         data = ['a', 'b', 'c']
-        lm = ListManager(data)
+        lm = EmbeddedManager(data)
         self.assertEqual('a', lm.get('a'))
         self.assertEqual('b', lm.get('b'))
         self.assertEqual('c', lm.get('c'))
@@ -199,7 +199,7 @@ class ListManagerTests(TestCase):
             Dummy(id=2, name='NAME_2'),
             Dummy(id=3, name='NAME_3')
         ]
-        lm = ListManager(data)
+        lm = EmbeddedManager(data)
         self.assertTrue(isinstance(lm.get(id=1), Dummy))
         self.assertEqual(1, lm.get(id=1).id)
         self.assertEqual('NAME_1', lm.get(id=1).name)
@@ -224,7 +224,7 @@ class ListManagerTests(TestCase):
             Dummy(id=3, name='NAME_B'),
             Dummy(id=4, name='NAME_B')
         ]
-        lm = ListManager(data)
+        lm = EmbeddedManager(data)
         self.assertTrue(isinstance(lm.get(id=1, name='NAME_A'), Dummy))
         self.assertEqual(1, lm.get(id=1, name='NAME_A').id)
         self.assertEqual('NAME_A', lm.get(id=1, name='NAME_A').name)
@@ -238,7 +238,7 @@ class ListManagerTests(TestCase):
             Dummy(id=3, name='NAME_B'),
             Dummy(id=4, name='NAME_B')
         ]
-        lm = ListManager(data)
+        lm = EmbeddedManager(data)
         
         self.assertEqual(1, len(lm.filter(id=1, name='NAME_A')))
         self.assertTrue(isinstance(lm.filter(id=1, name='NAME_A')[0], Dummy))
@@ -260,7 +260,7 @@ class ListManagerTests(TestCase):
             Dummy(id=3, name='NAME_B'),
             Dummy(id=4, name='NAME_B')
         ]
-        lm = ListManager(data)
+        lm = EmbeddedManager(data)
         self.assertEqual(4, len(lm))
         
 
@@ -271,7 +271,7 @@ class ListManagerTests(TestCase):
             Dummy(id=3, name='NAME_B'),
             Dummy(id=4, name='NAME_B')
         ]
-        lm = ListManager(data)
+        lm = EmbeddedManager(data)
         lm.append(Dummy(id=5, name='NAME_C'))
         self.assertEqual(5, len(lm))
         self.assertEqual(5, lm.get(id=5).id)
@@ -287,8 +287,8 @@ class ListManagerTests(TestCase):
             Dummy(id=3, name='NAME_B'),
             Dummy(id=4, name='NAME_B')
         ]
-        lm = ListManager(data)
-        with self.assertRaisesRegex(TypeError, 'No type defined for ListManager'):
+        lm = EmbeddedManager(data)
+        with self.assertRaisesRegex(TypeError, 'No type defined for EmbeddedManager'):
             lm.create(id=5, name='CREATED')
 
     def test_create_with_type(self):
@@ -298,7 +298,7 @@ class ListManagerTests(TestCase):
             Dummy(id=3, name='NAME_B'),
             Dummy(id=4, name='NAME_B')
         ]
-        lm = ListManager(data, type=Dummy)
+        lm = EmbeddedManager(data, type=Dummy)
         created = lm.create(id=5, name='CREATED')
         self.assertIsNotNone(created)
         self.assertTrue(isinstance(created, Dummy))
@@ -318,7 +318,7 @@ class ListManagerTests(TestCase):
             Dummy(id=5, name='NAME_B', flag='B'),
             Dummy(id=6, name='NAME_B', flag='C')
         ]
-        lm = ListManager(data, type=Dummy)
+        lm = EmbeddedManager(data, type=Dummy)
         self.assertEqual(1, len(lm.filter(name='NAME_B').filter(flag='B')))
         self.assertEqual(5, lm.filter(name='NAME_B').filter(flag='B')[0].id)
         self.assertEqual('NAME_B', lm.filter(name='NAME_B').filter(flag='B')[0].name)
@@ -333,7 +333,7 @@ class ListManagerTests(TestCase):
             Dummy(id=5, name='NAME_B', flag='B'),
             Dummy(id=6, name='NAME_B', flag='C')
         ]
-        lm = ListManager(data, type=Dummy)
+        lm = EmbeddedManager(data, type=Dummy)
         self.assertEqual(5, lm.filter(name='NAME_B').get(flag='B').id)
         self.assertEqual('NAME_B', lm.filter(name='NAME_B').get(flag='B').name)
         self.assertEqual('B', lm.filter(name='NAME_B').get(flag='B').flag)
@@ -349,7 +349,7 @@ class ListManagerTests(TestCase):
             Dummy(id=5, name='NAME_B', check='NAME_B'),
             Dummy(id=6, name='NAME_B', check='NAME_B')
         ]
-        lm = ListManager(data, type=Dummy)
+        lm = EmbeddedManager(data, type=Dummy)
         self.assertEqual(2, lm.get(name=F('check')).id)
         
     def test_filter_with_field(self):
@@ -361,7 +361,7 @@ class ListManagerTests(TestCase):
             Dummy(id=5, name='NAME_B', check='NAME_B'),
             Dummy(id=6, name='NAME_B', check='NAME_B')
         ]
-        lm = ListManager(data, type=Dummy)
+        lm = EmbeddedManager(data, type=Dummy)
         self.assertEqual(3, len(lm.filter(name=F('check'))))
         self.assertEqual(2, lm.filter(name=F('check'))[0].id)
         self.assertEqual(5, lm.filter(name=F('check'))[1].id)
@@ -376,7 +376,7 @@ class ListManagerTests(TestCase):
             Dummy(id=5, name='NAME_B', check='NAME_B'),
             Dummy(id=6, name='NAME_B', check='NAME_B')
         ]
-        lm = ListManager(type=Dummy)
+        lm = EmbeddedManager(type=Dummy)
         self.assertEqual(0, len(lm))
         lm.set(data)
         self.assertEqual(6, len(lm))
@@ -393,7 +393,7 @@ class ListManagerTests(TestCase):
             Dummy(id=5, name='NAME_B', check='NAME_B'),
             Dummy(id=6, name='NAME_B', check='NAME_B')
         ]
-        lm = ListManager(data, type=Dummy)
+        lm = EmbeddedManager(data, type=Dummy)
         self.assertEqual(6, len(lm))
         lm.clear()
         self.assertEqual(0, len(lm))
